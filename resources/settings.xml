@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<settings>
+    <setting id="app_id" type="text" default="player_static_prod"/>
+    <setting id="app_key" type="text" default="8930d72170e48303cf5f3867780d549b"/>
+    <setting id="quality" type="enum" values="best|hd|sd" default="best"/>
+</settings>
