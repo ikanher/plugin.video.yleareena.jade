@@ -1,5 +1,5 @@
 import requests  # type: ignore
-from areena_api import ProgramAPI, Program
+from src.areena_api import ProgramAPI, Item
 from .. import APP_ID, APP_KEY
 from . import logger
 from .playlist import download_playlist, parse_playlist_seasons
@@ -21,13 +21,13 @@ DEFAULT_PAGE_SIZE = 30
 _media_api = MediaAPI()
 _playouts: Dict[str, Playout] = {}
 _api: Optional[ProgramAPI] = None
-_cache: Dict[str, Program] = {}
+_cache: Dict[str, Item] = {}
 
 
 def _get_api() -> ProgramAPI:
     global _api
     if _api is None:
-        _api = ProgramAPI(timeout=3)
+        _api = ProgramAPI()
     return _api
 
 
