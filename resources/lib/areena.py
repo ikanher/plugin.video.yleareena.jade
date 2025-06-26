@@ -1,5 +1,6 @@
 import requests  # type: ignore
 from areena_api import ProgramAPI, Program
+from .. import APP_ID, APP_KEY
 from . import logger
 from .playlist import download_playlist, parse_playlist_seasons
 from .extractor import duration_from_search_result, parse_finnish_date
@@ -209,6 +210,25 @@ def _parse_search_results(search_response, pagination_links: bool = True) -> Lis
     return results
 
 
+def _search_url(keyword: str, offset: int, page_size: int) -> str:
+    q = urlencode({
+        'app_id': APP_ID,
+        'app_key': APP_KEY,
+        'client': 'yle-areena-web',
+        'language': 'fi',
+        'v': 10,
+        'episodes': 'true',
+        'packages': 'true',
+        'query': keyword,
+        'service': 'tv',
+        'offset': offset,
+        'limit': page_size,
+        'country': 'FI',
+        'isPortabilityRegion': 'true',
+    })
+    return f'https://areena.api.yle.fi/v1/ui/search?{q}'
+
+
 def _thumbnail_url(image_id: str, version: Optional[str] = None) -> str:
     version = version or '1624522786'
     return (
@@ -256,8 +276,8 @@ def _sport_live_url(offset: int, page_size: int) -> str:
         'limit': str(page_size),
         'country': 'FI',
         'isPortabilityRegion': 'true',
-        'app_id': 'areena-web-items',
-        'app_key': 'wlTs5D9OjIdeS9krPzRQR4I1PYVzoazN'
+        'app_id': APP_ID,
+        'app_key': APP_KEY
     })
     return f'https://areena.api.yle.fi/v1/ui/content/list?{q}'
 
@@ -274,7 +294,7 @@ def _only_in_areena_live_url(offset: int, page_size: int) -> str:
         'limit': str(page_size),
         'country': 'FI',
         'isPortabilityRegion': 'true',
-        'app_id': 'areena-web-items',
-        'app_key': 'wlTs5D9OjIdeS9krPzRQR4I1PYVzoazN'
+        'app_id': APP_ID,
+        'app_key': APP_KEY
     })
     return f'https://areena.api.yle.fi/v1/ui/content/list?{q}'
