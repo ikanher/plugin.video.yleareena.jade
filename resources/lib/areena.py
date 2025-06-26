@@ -1,4 +1,6 @@
 import requests  # type: ignore
+from areena_api import ProgramAPI, Program
+from .. import APP_ID, APP_KEY
 from . import logger
 from .playlist import download_playlist, parse_playlist_seasons
 from .extractor import duration_from_search_result, parse_finnish_date
@@ -7,7 +9,26 @@ from datetime import datetime
 from typing import Dict, List, Optional
 from urllib.parse import urlencode
 
+try:
+    import xbmcgui  # type: ignore
+except ImportError:  # pragma: no cover
+    xbmcgui = None
+
+from src.media_api import MediaAPI, Playout
+
 DEFAULT_PAGE_SIZE = 30
+
+_media_api = MediaAPI()
+_playouts: Dict[str, Playout] = {}
+_api: Optional[ProgramAPI] = None
+_cache: Dict[str, Program] = {}
+
+
+def _get_api() -> ProgramAPI:
+    global _api
+    if _api is None:
+        _api = ProgramAPI(timeout=3)
+    return _api
 
 
 class AreenaLink:
@@ -114,38 +135,39 @@ def search(
     offset: int = 0,
     page_size: int = DEFAULT_PAGE_SIZE
 ) -> List[AreenaLink]:
-    search_response = _get_search_results(keyword, offset, page_size)
-    return _parse_search_results(search_response)
+    resp = _get_api().search(keyword=keyword, offset=offset, limit=page_size)
+    return _parse_search_results(resp)
 
 
-def _get_search_results(keyword: str, offset: int, page_size: int) -> Dict:
-    r = requests.get(_search_url(keyword, offset=offset, page_size=page_size))
-    r.raise_for_status()
-    return r.json()
-
-
-def _parse_search_results(search_response: Dict, pagination_links: bool = True) -> List[AreenaLink]:
+def _parse_search_results(search_response, pagination_links: bool = True) -> List[AreenaLink]:
     results: List[AreenaLink] = []
-    for item in search_response.get('data', []):
-        uri = item.get('pointer', {}).get('uri')
-        pointer_type = item.get('pointer', {}).get('type')
-        transmissions = item.get('transmissions', [])
+    if isinstance(search_response, dict):
+        data = search_response.get('data', [])
+        meta = search_response.get('meta')
+    else:
+        data = getattr(search_response, 'data', [])
+        meta = getattr(search_response, 'meta', None)
+
+    for item in data:
+        uri = getattr(getattr(item, 'pointer', None), 'uri', None)
+        pointer_type = getattr(getattr(item, 'pointer', None), 'type', None)
+        transmissions = getattr(item, 'transmissions', []) or []
         is_upcoming = transmissions and all(
-            x.get('broadcastStatus') == 'upcoming'
+            getattr(x, 'broadcastStatus', None) == 'upcoming'
             for x in transmissions
         )
 
-        if item.get('type') == 'card' and uri and not is_upcoming:
+        if getattr(item, 'type', None) == 'card' and uri and not is_upcoming:
             if pointer_type in ['program', 'clip']:
-                title = item.get('title', {})
-                image_data = item.get('image', {})
-                duration = duration_from_search_result(item)
-
-                # If the description field is not empty, it contains either the
-                # publication date or the series name. Try to first parse as
-                # date. If parsing fails, assume that it's the series name.
+                title = getattr(getattr(item, 'title', None), 'fi', None) or ''
+                image = getattr(item, 'image', None)
+                image_id = getattr(image, 'id', None)
+                image_version = getattr(image, 'version', None)
+                duration = getattr(item, 'duration', None)
+                if duration is None and hasattr(item, 'model_dump'):
+                    duration = duration_from_search_result(item.model_dump())
                 published = None
-                description = item.get('description')
+                description = getattr(item, 'description', None)
                 if description:
                     published = parse_finnish_date(description)
                     if published is None and len(description) < 100:
@@ -157,18 +179,21 @@ def _parse_search_results(search_response: Dict, pagination_links: bool = True) 
                     duration_seconds=duration,
                     published=published,
                     description=title,
-                    image_id=image_data.get('id'),
-                    image_version=image_data.get('version')
+                    image_id=image_id,
+                    image_version=image_version
                 ))
+                program_id = getattr(item, 'id', None)
+                if program_id:
+                    _cache[program_id] = item
             elif pointer_type == 'series':
-                title = item.get('title', {})
-                image_data = item.get('image', {})
+                title = getattr(getattr(item, 'title', None), 'fi', None) or ''
+                image = getattr(item, 'image', None)
                 results.append(StreamLink(
                     homepage=uri,
                     title=title,
                     description=title,
-                    image_id=image_data.get('id'),
-                    image_version=image_data.get('version'),
+                    image_id=getattr(image, 'id', None),
+                    image_version=getattr(image, 'version', None),
                     is_folder=True
                 ))
             elif pointer_type == 'package':
@@ -176,20 +201,17 @@ def _parse_search_results(search_response: Dict, pagination_links: bool = True) 
             else:
                 logger.warning(f'Unknown pointer type: {pointer_type}')
 
-    # pagination links
-    if pagination_links:
-        meta = search_response.get('meta', {})
+    if pagination_links and meta is not None:
         keyword = (
-            meta
-            .get('analytics', {})
-            .get('onReceive', {})
-            .get('comscore', {})
-            .get('yle_search_phrase', '')
+            getattr(
+                getattr(getattr(meta, 'analytics', None), 'onReceive', None),
+                'comscore',
+                {}
+            ).get('yle_search_phrase', '')
         )
-        offset = meta.get('offset', 0)
-        limit = meta.get('limit', DEFAULT_PAGE_SIZE)
-        count = meta.get('count', 0)
-
+        offset = getattr(meta, 'offset', 0)
+        limit = getattr(meta, 'limit', DEFAULT_PAGE_SIZE)
+        count = getattr(meta, 'count', 0)
         next_offset = offset + limit
         if next_offset < count:
             results.append(SearchNavigationLink(keyword, next_offset, limit))
@@ -199,8 +221,8 @@ def _parse_search_results(search_response: Dict, pagination_links: bool = True) 
 
 def _search_url(keyword: str, offset: int, page_size: int) -> str:
     q = urlencode({
-        'app_id': 'areena-web-items',
-        'app_key': 'wlTs5D9OjIdeS9krPzRQR4I1PYVzoazN',
+        'app_id': APP_ID,
+        'app_key': APP_KEY,
         'client': 'yle-areena-web',
         'language': 'fi',
         'v': 10,
@@ -263,8 +285,8 @@ def _sport_live_url(offset: int, page_size: int) -> str:
         'limit': str(page_size),
         'country': 'FI',
         'isPortabilityRegion': 'true',
-        'app_id': 'areena-web-items',
-        'app_key': 'wlTs5D9OjIdeS9krPzRQR4I1PYVzoazN'
+        'app_id': APP_ID,
+        'app_key': APP_KEY
     })
     return f'https://areena.api.yle.fi/v1/ui/content/list?{q}'
 
@@ -281,7 +303,33 @@ def _only_in_areena_live_url(offset: int, page_size: int) -> str:
         'limit': str(page_size),
         'country': 'FI',
         'isPortabilityRegion': 'true',
-        'app_id': 'areena-web-items',
-        'app_key': 'wlTs5D9OjIdeS9krPzRQR4I1PYVzoazN'
+        'app_id': APP_ID,
+        'app_key': APP_KEY
     })
     return f'https://areena.api.yle.fi/v1/ui/content/list?{q}'
+
+
+def play(item_id: str):
+    playout = _playouts.get(item_id)
+    if playout is None:
+        playout = _media_api.get_playout(item_id, 'HLS')
+        if playout is None:
+            return None
+        if playout.drm:
+            second = _media_api.get_playout(item_id, 'HLS_DVR')
+            if second is None or second.drm:
+                if xbmcgui:
+                    from .kodi import show_notification
+                    show_notification('DRM-protected – cannot play', icon=xbmcgui.NOTIFICATION_ERROR)
+                return None
+            playout = second
+        _playouts[item_id] = playout
+
+    if xbmcgui:
+        li = xbmcgui.ListItem(path=playout.url, offscreen=True)
+        li.setProperty('inputstreamaddon', 'inputstream.adaptive')
+        li.setMimeType('application/vnd.apple.mpegurl')
+        li.setProperty('inputstream.adaptive.manifest_type', 'hls')
+        return li
+    else:
+        return None
