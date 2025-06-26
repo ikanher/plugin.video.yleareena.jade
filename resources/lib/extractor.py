@@ -1,5 +1,6 @@
 import re
 import requests  # type: ignore
+from .. import APP_ID, APP_KEY
 from . import logger
 from .manifesturl import ManifestUrl, random_elisa_ipv4
 from datetime import datetime
@@ -133,11 +134,12 @@ def preview_parser(pid: str) -> AreenaPreviewApiResponse:
 
 
 def preview_url(pid: str) -> str:
-    return f'https://player.api.yle.fi/v1/preview/{pid}.json?' \
-        'language=fin&ssl=true&countryCode=FI&host=areenaylefi' \
-        '&app_id=player_static_prod' \
-        '&app_key=8930d72170e48303cf5f3867780d549b' \
+    return (
+        f'https://player.api.yle.fi/v1/preview/{pid}.json?'
+        'language=fin&ssl=true&countryCode=FI&host=areenaylefi'
+        f'&app_id={APP_ID}&app_key={APP_KEY}'
         '&isPortabilityRegion=true'
+    )
 
 
 def parse_finnish_date(date_string: str) -> Optional[datetime]:
