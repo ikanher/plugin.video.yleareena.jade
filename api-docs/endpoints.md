@@ -1,0 +1,10 @@
+- **GET /v3/schema/v1/programs/expiring** — List published objects that will expire within 30 days, ascending order
+- **GET /v3/schema/v1/programs/future** — List objects that are available in the future, ascending order
+- **GET /v3/schema/v1/programs/last_modified** — List objects by last modification time, descending order
+- **GET /v3/schema/v1/programs/latest** — List published objects by publication time, descending order
+- **GET /v3/schema/v1/programs/popular** — List published objects by popularity, descending order
+- **GET /v3/schema/v3/programs/expiring** — List published objects that will expire within 30 days, ascending order
+- **GET /v3/schema/v3/programs/future** — List objects that are available in the future, ascending order
+- **GET /v3/schema/v3/programs/last_modified** — List objects by last modification time, descending order
+- **GET /v3/schema/v3/programs/latest** — List published objects by publication time, descending order
+- **GET /v3/schema/v3/programs/popular** — List published objects by popularity, descending order

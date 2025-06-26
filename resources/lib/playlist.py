@@ -2,6 +2,7 @@ import html5lib
 import json
 import re
 import requests  # type: ignore
+from .. import APP_ID, APP_KEY
 from . import logger
 from dataclasses import dataclass
 from datetime import datetime
@@ -81,8 +82,8 @@ def download_playlist(
     params = {
         'offset': str(offset),
         'limit': str(page_size),
-        'app_id': 'areena-web-items',
-        'app_key': 'wlTs5D9OjIdeS9krPzRQR4I1PYVzoazN',
+        'app_id': APP_ID,
+        'app_key': APP_KEY,
     }
     playlist_page_url = update_url_query(season_url, params)
     return _parse_series_episode_data(playlist_page_url)
