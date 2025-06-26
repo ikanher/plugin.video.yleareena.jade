@@ -9,8 +9,17 @@ from datetime import datetime
 from typing import Dict, List, Optional
 from urllib.parse import urlencode
 
+try:
+    import xbmcgui  # type: ignore
+except ImportError:  # pragma: no cover
+    xbmcgui = None
+
+from src.media_api import MediaAPI, Playout
+
 DEFAULT_PAGE_SIZE = 30
 
+_media_api = MediaAPI()
+_playouts: Dict[str, Playout] = {}
 _api: Optional[ProgramAPI] = None
 _cache: Dict[str, Program] = {}
 
@@ -298,3 +307,29 @@ def _only_in_areena_live_url(offset: int, page_size: int) -> str:
         'app_key': APP_KEY
     })
     return f'https://areena.api.yle.fi/v1/ui/content/list?{q}'
+
+
+def play(item_id: str):
+    playout = _playouts.get(item_id)
+    if playout is None:
+        playout = _media_api.get_playout(item_id, 'HLS')
+        if playout is None:
+            return None
+        if playout.drm:
+            second = _media_api.get_playout(item_id, 'HLS_DVR')
+            if second is None or second.drm:
+                if xbmcgui:
+                    from .kodi import show_notification
+                    show_notification('DRM-protected – cannot play', icon=xbmcgui.NOTIFICATION_ERROR)
+                return None
+            playout = second
+        _playouts[item_id] = playout
+
+    if xbmcgui:
+        li = xbmcgui.ListItem(path=playout.url, offscreen=True)
+        li.setProperty('inputstreamaddon', 'inputstream.adaptive')
+        li.setMimeType('application/vnd.apple.mpegurl')
+        li.setProperty('inputstream.adaptive.manifest_type', 'hls')
+        return li
+    else:
+        return None
